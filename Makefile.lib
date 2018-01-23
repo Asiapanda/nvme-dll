@@ -1,0 +1,21 @@
+CFLAGS = -g -Wall -Werror
+LINUX_CLI=linux_cli
+LINUX_DLL_SO=libnvme_a.so
+LINUX_DLL=nvme_a
+CC=gcc
+OBJECT=nvme-ioctl.o suffix.o nvme-dll.o\
+	   nvme-print.o
+
+$(LINUX_CLI): $(LINUX_DLL_SO) nvme-cli.c 
+	$(CC) -o $(LINUX_CLI) -L./lib/ -l$(LINUX_DLL) nvme-cli.c nvme-dll.h
+	ctags -R
+
+$(LINUX_DLL_SO):$(OBJECT)
+	$(CC) -shared -o ./lib/$(LINUX_DLL_SO) $^
+
+%.o:%.c
+	$(CC) -fPIC -c -o $@ $^
+
+.PHONY: clean
+clean:
+	-rm -rf *.o $(LINUX_CLI) ./lib/$(LINUX_DLL_SO)
