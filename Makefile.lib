@@ -18,4 +18,4 @@ $(LINUX_DLL_SO):$(OBJECT)
 
 .PHONY: clean
 clean:
-	-rm -rf *.o $(LINUX_CLI) ./lib/$(LINUX_DLL_SO)
+	-rm -rf *.o $(LINUX_CLI) ./lib/$(LINUX_DLL_SO) ./log/*

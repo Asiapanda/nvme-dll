@@ -25,7 +25,17 @@
 #define min(x, y) ((x) > (y) ? (y) : (x))
 #define max(x, y) ((x) > (y) ? (x) : (y))
 #define DEVPATH "/dev/"
+#define LOG_PATH "./log/list_log"
 static struct stat nvme_stat;
+char errorbuf[1024];
+
+void printError(char *buf)
+{
+	int i = strlen(buf);
+	buf[i + 1] = ' ';
+	snprintf(errorbuf, sizeof(errorbuf), "echo %s >> %s", buf, LOG_PATH);
+	system(errorbuf);
+}
 
 int open_dev(char *path)
 {
@@ -40,7 +50,7 @@ int open_dev(char *path)
 		return -2;
 	}
 	if(!S_ISCHR(nvme_stat.st_mode) && !S_ISBLK(nvme_stat.st_mode)){
-		fprintf(stderr, "%s is not a block or character device\n", path);
+		printError("\"file is not a block or character device\"");
 		return -3;
 	}
 	return fd;
@@ -57,24 +67,29 @@ static void print_list_item(struct list_item list_item)
 
 	char usage[128];
 	char format[128];
+	char buf[1024];
 
 	sprintf(usage, "%6.2f %2sB / %6.2f %2sB", nuse, u_suffix, nsze, s_suffix);
 	sprintf(format, "%3.0f %2sB + %2d B", (double)lba, l_suffix, list_item.ns.lbaf[(list_item.ns.flbas & 0x0f)].ms);
-	printf("%-16s %-*.*s %-*.*s %-9d %-26s %-16s %-.*s\n", list_item.node, 
+	snprintf(buf, sizeof(buf), "\"%-16s %-*.*s %-*.*s %-9d %-26s %-16s %-.*s\"", list_item.node, 
 			(int)sizeof(list_item.ctrl.sn), (int)sizeof(list_item.ctrl.sn), list_item.ctrl.sn,
 			(int)sizeof(list_item.ctrl.mn), (int)sizeof(list_item.ctrl.mn), list_item.ctrl.mn,
 			list_item.nsid, usage, format, (int)sizeof(list_item.ctrl.fr), list_item.ctrl.fr);
+	printError(buf);
 }
 
 static void print_list_items(struct list_item *list_items, unsigned len)
 {
 	unsigned i;
+	char buf[1024] = { 0 };
 
-	printf("%-16s %-20s %-40s %-9s %-26s %-16s %-8s\n",
+	snprintf(buf, sizeof(buf), "\"%-16s %-20s %-40s %-9s %-26s %-16s %-8s\"",
 			"Node", "SN", "Model", "Namespace", "Usage", "Format", "FW Rev");
-	printf("%-16s %-20s %-40s %-9s %-26s %-16s %-8s\n",
+	printError(buf);
+	snprintf(buf, sizeof(buf), "\"%-16s %-20s %-40s %-9s %-26s %-16s %-8s\"",
 			 "----------------", "--------------------", "----------------------------------------",
 		     "---------", "--------------------------", "----------------", "--------");
+	printError(buf);
 	for(i = 0; i < len; i++)
 		print_list_item(list_items[i]);
 }
@@ -135,13 +150,13 @@ int GetDeviceList()
 
 	n = scandir(DEVPATH, &devices, scan_dev_filter, alphasort);
 	if(n < 0){
-		fprintf(stderr, "no NVMe device(s) detected.\n");
+		printError("\"no Nvme device(s) detected.\"");
 		return n;
 	}
 	
 	list_items = calloc(n, sizeof(*list_items));
 	if(!list_items){
-		fprintf(stderr, "can not allocate controller list payload.\n");
+		printError("\"can not allocate controller list payload.\"");
 		return -1;
 	}
 
@@ -149,7 +164,7 @@ int GetDeviceList()
 		snprintf(path, sizeof(path), "%s%s", DEVPATH, devices[i]->d_name);
 		fd = open(path, O_RDONLY);
 		if(fd < 0){
-			fprintf(stderr, "can not open %s: %s\n", path, strerror(errno));
+			printError("\"can not open device\"");
 			return errno;
 		}
 		ret = get_nvme_info(fd, &list_items[i], path);
@@ -200,23 +215,22 @@ int DownfwDevice(char *path, char *fwpath)
 	fw_fd = open(cfg.fw, O_RDONLY);
 	cfg.offset <<= 2;
 	if (fw_fd < 0){
-		fprintf(stderr, "no firmware file provided\n");
+		printError("\"no firmware file provided\"");
 		return EINVAL;
 	}
 
 	err = fstat(fw_fd, &sb);
 	if (err < 0){
-		perror("fstat");
 		return errno;
 	}
 
 	fw_size = sb.st_size;
 	if (fw_size & 0x3){
-		fprintf(stderr, "Invalid size:%d for f/w image\n", fw_size);
+		printError("\"Invalid size: for f/w image\"");
 		return EINVAL;
 	}
 	if (posix_memalign(&fw_buf, getpagesize(), fw_size)) {
-		fprintf(stderr, "No memory for f/w size:%d\n", fw_size);
+		printError("\"No memory for f/w size\"");
 		return ENOMEM;
 	}
 	if (cfg.xfer == 0 || cfg.xfer % 4096)
@@ -229,10 +243,10 @@ int DownfwDevice(char *path, char *fwpath)
 
 		err = nvme_fw_download(fd, cfg.offset, cfg.xfer, fw_buf);
 		if (err < 0) {
-			perror("fw-download");
+			printError("\"fw-download\"");
 			break;
 		}else if (err != 0) {
-			fprintf(stderr, "NVME Admin command error:%s(%x)\n", nvme_status_to_string(err), err);
+			printError("\"NVME Admin command error\"");
 			break;
 		}
 		fw_buf		+= cfg.xfer;
@@ -240,7 +254,7 @@ int DownfwDevice(char *path, char *fwpath)
 		cfg.offset	+= cfg.xfer;
 	}
 	if (!err)
-		printf("Firmware download success\n");
+		printError("\"Firmware download success\"");
 	close(fd);
 	close(fw_fd);
 	return err;
@@ -252,7 +266,7 @@ static int get_nsid(int fd)
 
 	if(nsid <= 0)
 	{
-		fprintf(stderr, "failed to return namespace id\n");
+		printError("\"failed to return namespace id\"");
 		return errno;
 	}
 	return nsid;
@@ -300,9 +314,9 @@ int FormatDevice(char *path)
 		err = nvme_identify_ns(fd, cfg.namespace_id, 0, &ns);
 		if(err){
 			if(err < 0)
-				perror("identify-namespace");
+				printError("\"identify-namespace\"");
 			else
-				fprintf(stderr, "NVME Admin command error:%s(%x)\n", nvme_status_to_string(err), err);
+				printError("\"NVME Admin command error\"");
 			return err;
 		}
 		prev_lbaf = ns.flbas & 0xf;
@@ -312,23 +326,23 @@ int FormatDevice(char *path)
 
 	// see & pi checks set to 7 for forware-compatibility
 	if (cfg.ses > 7){
-		fprintf(stderr, "invalid secure erase settings:%d\n", cfg.ses);
+		printError("\"invalid secure erase settings\"");
 		return EINVAL;
 	}
 	if (cfg.lbaf > 15){
-		fprintf(stderr, "invalid lbaf:%d\n", cfg.lbaf);
+		printError("\"invalid lbaf\"");
 		return EINVAL;
 	}
 	if (cfg.pi > 7){
-		fprintf(stderr, "invalid pi:%d\n", cfg.pi);
+		printError("\"invalid pi\"");
 		return EINVAL;
 	}
 	if (cfg.pil > 1){
-		fprintf(stderr, "invalid pil:%d\n", cfg.pil);
+		printError("\"invalid pil\"");
 		return EINVAL;
 	}
 	if (cfg.ms > 1){
-		fprintf(stderr, "invalid ms:%d\n", cfg.ms);
+		printError("\"invalid ms\"");
 		return EINVAL;
 	}
 
@@ -337,25 +351,14 @@ int FormatDevice(char *path)
 	if (err < 0)
 		perror("format");
 	else if (err != 0)
-		fprintf(stderr, "NVME Admin command error:%s(%x)\n",
-				nvme_status_to_string(err), err);
+		printError("\"NVME Admin command error\"");
 	else {
-		printf("Success formatting namespace:%x\n", cfg.namespace_id);
+		printError("\"Success formatting namespace\"");
 		ioctl(fd, BLKRRPART);
 		if(cfg.reset && S_ISCHR(nvme_stat.st_mode))
 			nvme_reset_controller(fd);
 	}
 	return err;
-}
-
-static char *nvme_fw_status_reset_type(__u32 status)
-{
-	switch (status & 0x3ff) {
-	case NVME_SC_FW_NEEDS_CONV_RESET:	return "conventional";
-	case NVME_SC_FW_NEEDS_SUBSYS_RESET:	return "subsystem";
-	case NVME_SC_FW_NEEDS_RESET:		return "any controller";
-	default:							return "unknown";
-	}
 }
 
 /**************************************************
@@ -377,32 +380,29 @@ int ActivateDevice(char *path, int slot, int action)
 		return fd;
 
 	if (slot > 7) {
-		fprintf(stderr, "invalid slot:%d\n", slot);
+		printError("\"invalid slot\"");
 		return EINVAL;
 	}
 	if (action > 7 || action == 4 || action == 5) {
-		fprintf(stderr, "invalid action:%d\n", action);
+		printError("\"invalid action\"");
 		return EINVAL;
 	}
 
 	err = nvme_fw_activate(fd, slot, action);
 	if (err < 0)
-		perror("fw-activate");
+		printError("\"fw-activate\"");
 	else if (err != 0)
 		switch (err & 0x3ff) {
 		case NVME_SC_FW_NEEDS_CONV_RESET:
 		case NVME_SC_FW_NEEDS_SUBSYS_RESET:
 		case NVME_SC_FW_NEEDS_RESET:
-			printf("Success activating firmware action:%d slot:%d. but firmware requires %s reset\n",
-					action, slot, nvme_fw_status_reset_type(err));
+			printError("\"Success activating firmware action:1 slot:0. but firmware requires reset\"");
 			break;
 		default:
-			fprintf(stderr, "NVME Admin command error:%s(%x)\n", 
-					nvme_status_to_string(err), err);
+			printError("\"NVME Admin command error\"");
 			break;
 		}
 	else 
-		printf("Success activating firmware action:%d slot:%d\n",
-				action, slot);
+		printError("\"Success activating firmware\"");
 	return err;
 }

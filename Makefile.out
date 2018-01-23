@@ -13,4 +13,4 @@ $(LINUX_CLI): $(OBJECT)
 
 .PHONY: clean
 clean:
-	-rm -rf *.o $(LINUX_CLI) tags
+	-rm -rf *.o $(LINUX_CLI) tags ./log/*
