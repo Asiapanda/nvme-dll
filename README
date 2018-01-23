@@ -9,3 +9,5 @@
 3: mkdir lib
 4: Makefile.out 是生成.out文件
 5：Makefile.lib 是生成.so文件
+GUI_master:	
+	此分支用于方便Qt的调用，返回值为文件路径
