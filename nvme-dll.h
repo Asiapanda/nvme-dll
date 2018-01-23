@@ -1,3 +1,7 @@
+#ifdef __cplusplus
+extern "C" {
+#endif 
+
 #ifndef __NVME__MAIN_H_
 #define __NVME__MAIN_H_
 
@@ -44,4 +48,8 @@ int FormatDevice(char *path);
  *************************************************/
 int ActivateDevice(char *path, int slot, int action);
 
+#endif
+
+#ifdef __cplusplus
+}
 #endif
